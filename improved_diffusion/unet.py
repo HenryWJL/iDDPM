@@ -24,7 +24,7 @@ class TimestepBlock(nn.Module):
     """
     Any module where forward() takes timestep embeddings as a second argument.
     """
-
+    # Abstract class can not be instantiated.
     @abstractmethod
     def forward(self, x, emb):
         """
@@ -49,7 +49,7 @@ class TimestepEmbedSequential(nn.Sequential, TimestepBlock):
 
 class Upsample(nn.Module):
     """
-    An upsampling layer with an optional convolution.
+    An upsampling layer using nearest neighbor interpolation with an optional convolution projection.
 
     :param channels: channels in the inputs and outputs.
     :param use_conv: a bool determining if a convolution is applied.
@@ -62,6 +62,7 @@ class Upsample(nn.Module):
         self.channels = channels
         self.use_conv = use_conv
         self.dims = dims
+        # create a single-layer Conv1d, Conv2d, or Conv3d module.
         if use_conv:
             self.conv = conv_nd(dims, channels, channels, 3, padding=1)
 
@@ -80,7 +81,7 @@ class Upsample(nn.Module):
 
 class Downsample(nn.Module):
     """
-    A downsampling layer with an optional convolution.
+    A downsampling layer using Conv or AvgPool.
 
     :param channels: channels in the inputs and outputs.
     :param use_conv: a bool determining if a convolution is applied.
@@ -94,8 +95,10 @@ class Downsample(nn.Module):
         self.use_conv = use_conv
         self.dims = dims
         stride = 2 if dims != 3 else (1, 2, 2)
+        # downsample using Conv
         if use_conv:
             self.op = conv_nd(dims, channels, channels, 3, stride=stride, padding=1)
+        # downsample using AvgPool
         else:
             self.op = avg_pool_nd(stride)
 
@@ -139,6 +142,7 @@ class ResBlock(TimestepBlock):
         self.use_checkpoint = use_checkpoint
         self.use_scale_shift_norm = use_scale_shift_norm
 
+        # normalization: GroupNorm for float32
         self.in_layers = nn.Sequential(
             normalization(channels),
             SiLU(),
@@ -151,6 +155,7 @@ class ResBlock(TimestepBlock):
                 2 * self.out_channels if use_scale_shift_norm else self.out_channels,
             ),
         )
+        # zero_module: set the parameters of a model to zeros
         self.out_layers = nn.Sequential(
             normalization(self.out_channels),
             SiLU(),
@@ -159,13 +164,16 @@ class ResBlock(TimestepBlock):
                 conv_nd(dims, self.out_channels, self.out_channels, 3, padding=1)
             ),
         )
-
+        ### residual connection
+        # Identity
         if self.out_channels == channels:
             self.skip_connection = nn.Identity()
+        # 3x3 Conv
         elif use_conv:
             self.skip_connection = conv_nd(
                 dims, channels, self.out_channels, 3, padding=1
             )
+        # 1x1 Conv
         else:
             self.skip_connection = conv_nd(dims, channels, self.out_channels, 1)
 
@@ -184,13 +192,17 @@ class ResBlock(TimestepBlock):
     def _forward(self, x, emb):
         h = self.in_layers(x)
         emb_out = self.emb_layers(emb).type(h.dtype)
+        # len(x.shape) returns the dimensions of x, e.g., if x.shape = (2, 2, 1), len(x.shape) = 3
         while len(emb_out.shape) < len(h.shape):
-            emb_out = emb_out[..., None]
+            emb_out = emb_out[..., None]  # "..." represents all dimensions of "emb_out" before unsqueezing,
+                                          # and emb_out[..., None] equals to emb_out.unsqueeze(-1)
+        # ???
         if self.use_scale_shift_norm:
             out_norm, out_rest = self.out_layers[0], self.out_layers[1:]
-            scale, shift = th.chunk(emb_out, 2, dim=1)
+            scale, shift = th.chunk(emb_out, 2, dim=1)  # torch.chunk
             h = out_norm(h) * (1 + scale) + shift
             h = out_rest(h)
+        # directly add time step embeddings to features
         else:
             h = h + emb_out
             h = self.out_layers(h)
