@@ -109,7 +109,7 @@ class Downsample(nn.Module):
 
 class ResBlock(TimestepBlock):
     """
-    A residual block that can optionally change the number of channels.
+    Incorporate time step embeddings to features with residual connection.
 
     :param channels: the number of input channels.
     :param emb_channels: the number of timestep embedding channels.
