@@ -18,10 +18,11 @@ from improved_diffusion.train_util import TrainLoop
 
 def main():
     args = create_argparser().parse_args()
-
+    # prepare for distributed data parallel training
     dist_util.setup_dist()
+    # prepare logger
     logger.configure()
-
+    # create model and diffusion
     logger.log("creating model and diffusion...")
     model, diffusion = create_model_and_diffusion(
         **args_to_dict(args, model_and_diffusion_defaults().keys())
